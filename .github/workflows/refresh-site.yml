@@ -17,9 +17,12 @@ on:
 
 permissions: {}
 
+# GitHub fires both "published" and "released" for one new release, so two runs
+# start at the same moment. They queue rather than cancel: the ping is cheap and
+# idempotent, and cancelling risks losing the only run that would have sent it.
 concurrency:
   group: refresh-site
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   refresh:
