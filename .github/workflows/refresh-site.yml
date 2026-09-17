@@ -1,0 +1,53 @@
+# Tells ftlmultiplayer.com that the releases here changed, so a new build shows
+# up on the download page immediately rather than waiting out its cache.
+#
+# This lives in the downloads repo rather than in the client's source repo
+# because the site reads THIS repository. Anything that changes a release here
+# should refresh the site, however it got published.
+#
+# Requires a repository secret SITE_REVALIDATE_SECRET, matching REVALIDATE_SECRET
+# in the site's Vercel environment.
+
+name: Refresh site download page
+
+on:
+  release:
+    types: [published, edited, deleted, released, unpublished]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: refresh-site
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping revalidation endpoint
+        env:
+          SECRET: ${{ secrets.SITE_REVALIDATE_SECRET }}
+          ENDPOINT: ${{ vars.SITE_REVALIDATE_URL || 'https://ftlmultiplayer.com/api/revalidate' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SECRET}" ]; then
+            echo "::error::SITE_REVALIDATE_SECRET is not set; the download page will fall back to its cache window."
+            exit 1
+          fi
+
+          # --fail-with-body so a non-2xx still prints what the site said.
+          code=$(curl -sS --fail-with-body \
+            --retry 3 --retry-delay 5 --retry-all-errors \
+            -o response.json -w '%{http_code}' \
+            -X POST "${ENDPOINT}" \
+            -H "x-revalidate-secret: ${SECRET}" \
+            -H 'content-length: 0') || {
+              echo "::error::Revalidation failed (HTTP ${code:-000})."
+              cat response.json || true
+              exit 1
+            }
+
+          echo "Revalidated (HTTP ${code})."
+          cat response.json
